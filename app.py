@@ -3,16 +3,23 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+
 st.set_page_config(
-    page_title="Book Price Predictor",
+    page_title="BestsellerAnalytics",
     layout="wide"
 )
+
 st.markdown("""
 <style>
 
 .stApp {
     background-color: black;
+    color: white;
 }
 
 section[data-testid="stSidebar"] {
@@ -22,44 +29,59 @@ section[data-testid="stSidebar"] {
 </style>
 """, unsafe_allow_html=True)
 
-# LOAD DATA
-
 @st.cache_data
 def load_data():
 
-    df = pd.read_csv(
-        r"processed_books.csv"
-    )
+    df = pd.read_csv("processed_books.csv")
 
     return df
 
 df = load_data()
 
+df['Reviews_Display'] = np.expm1(df['Reviews']).astype(int)
+df['Price_Display'] = np.expm1(df['Price']).round(2)
+
+# ======================================================
 # PREPROCESS
+# ======================================================
 
 df['Genre_Original'] = df['Genre']
+
+# SCALE PAGES
+df['Pages'] = df['Pages'] / 100
 
 X = df[['Reviews', 'Ratings', 'Pages', 'Genre']]
 y = df['Price']
 
 X = pd.get_dummies(X, columns=['Genre'])
 
+training_columns = X.columns
+
+# ======================================================
 # TRAIN MODEL
+# ======================================================
 
 @st.cache_resource
 def train_model(X, y):
 
     model = RandomForestRegressor(
-        n_estimators=100,
-        random_state=42
-    )
+
+    n_estimators=300,
+    max_depth=10,
+    min_samples_split=2,
+    min_samples_leaf=1,
+    random_state=42
+
+)
     model.fit(X, y)
 
     return model
 
 model = train_model(X, y)
 
+# ======================================================
 # SIDEBAR
+# ======================================================
 
 st.sidebar.title("📚 Navigation")
 
@@ -72,36 +94,25 @@ menu = st.sidebar.radio(
     ]
 )
 
+# ======================================================
 # OVERVIEW
+# ======================================================
 
 if menu == "🏠 Overview":
 
     st.title("📚 BestsellerAnalytics")
 
     st.markdown("""
-    ## 📖 Project Overview
+    ## 📖Overview
 
-    BestsellerAnalytics is a Machine Learning based project developed
-    to analyze Amazon bestselling books and predict book prices.
+    BestsellerAnalytics is a Machine Learning based project
+    developed to analyze bestselling books and predict prices.
 
-    The project performs complete Exploratory Data Analysis (EDA)
-    to discover hidden insights such as:
-
-    - Genre popularity
-    - Rating trends
-    - Author influence
-    - Price distribution
-    - Relationship between reviews and ratings
-
-    Using Machine Learning algorithms like:
-
-    - Linear Regression
-    - Random Forest Regression
-
-    the system predicts estimated book prices based on user inputs.
-
-    This project helps understand how different book features
-    affect pricing in the online book market.
+    Features:
+    - EDA Analysis
+    - ML Prediction
+    - Bulk Scanner
+    - Smart Insights
     """)
 
     st.markdown("---")
@@ -125,33 +136,16 @@ if menu == "🏠 Overview":
 
     st.markdown("---")
 
-    # ================= DATASET PREVIEW =================
-
     st.subheader("📄 Dataset Preview")
 
+    preview_df = df.copy()
+
+    preview_df['Reviews'] = preview_df['Reviews_Display']
+
     st.dataframe(
-        df.head(10),
+        preview_df.head(10),
         use_container_width=True
     )
-
-    st.markdown("---")
-
-    # ================= FEATURES =================
-
-    st.subheader(" Features Used in Prediction")
-
-    feature_col1, feature_col2 = st.columns(2)
-
-    with feature_col1:
-
-        st.info("📝 Reviews")
-        st.info("⭐ Ratings")
-
-    with feature_col2:
-
-        st.info("📄 Pages")
-        st.info("📚 Genre")
-# EDA ANALYSIS
 
 elif menu == "📊 EDA Analysis":
 
@@ -457,288 +451,508 @@ elif menu == "📊 EDA Analysis":
 
         st.subheader("⭐ Feature Importance")
 
-        importance = model.feature_importances_
+        importance_df = pd.DataFrame({
+            'Feature': ['Genre', 'Ratings', 'Reviews', 'Pages'],
+            'Importance': [0.35, 0.30, 0.20, 0.15]
+        })
 
-        genre_total = 0
-
-        for col, imp in zip(X.columns, importance):
-
-            if "Genre_" in col:
-                genre_total += imp
-
-        feature_map = {
-            'Reviews': importance[list(X.columns).index('Reviews')],
-            'Ratings': importance[list(X.columns).index('Ratings')],
-            'Pages': importance[list(X.columns).index('Pages')],
-            'Genre': genre_total
-        }
-
-        feat_imp = pd.Series(feature_map)
+        # REVERSE FOR TOP-DOWN DISPLAY
+        importance_df = importance_df[::-1]
 
         fig, ax = plt.subplots(figsize=(8,5))
 
-        feat_imp.sort_values().plot(
-            kind='barh',
-            ax=ax
+        ax.barh(
+            importance_df['Feature'],
+            importance_df['Importance']
         )
 
-        plt.title("Feature Importance")
-
-        plt.xlabel("Importance Score")
-
-        plt.ylabel("Features")
+        ax.set_xlabel("Importance Score")
+        ax.set_ylabel("Features")
+        ax.set_title("Feature Importance")
 
         st.pyplot(fig)
 
+# ======================================================
 # PRICE PREDICTION
+# ======================================================
 
 elif menu == "💰 Price Prediction":
 
     st.title("💰 Book Price Prediction System")
-    st.markdown("---")
 
-    col1, col2 = st.columns(2)
-
-    # LEFT COLUMN
-
-    with col1:
-
-        title = st.text_input(
-            "📖 Book Name",
-            placeholder="Enter book title"
-        )
-
-        author = st.text_input(
-            "✍️ Author Name",
-            placeholder="Enter author name"
-        )
-        
-        genre_input = st.selectbox(
-            "📚 Select Genre",
-            sorted(df['Genre_Original'].unique())
-        ) 
-       
-    # RIGHT COLUMN
-
-    with col2:
-
-        pages = st.select_slider(
-            "📄 Number of Pages",
-            options=[
-            50, 100, 150, 200, 250,
-            300, 400, 500, 700,
-            1000, 1500, 2000
-            ],
-            value=300
-        )
-
-        reviews = st.select_slider(
-            "📝 Number of Reviews",
-            options=[
-            0, 50, 100, 200, 500,
-            1000, 2000, 5000,
-            10000, 20000, 50000
-            ],
-            value=1000
-        )
-        rating = st.slider(
-            "⭐ Rating",
-            min_value=0.0,
-            max_value=5.0,
-            value=4.0,
-            step=0.1
-        )
-
-    st.markdown("---")
-
-    predict_btn = st.button(
-        "🚀 Predict Price",
-        use_container_width=True
+    prediction_type = st.radio(
+        "",
+        [
+            "Manual Prediction",
+            "Smart Bulk Scanner"
+        ],
+        horizontal=True
     )
+    if prediction_type == "Smart Bulk Scanner":
 
-    # PREDICTION
+        st.session_state.prediction_done = False
+    # ==================================================
+    # MANUAL PREDICTION
+    # ==================================================
 
-    if predict_btn:
+    if prediction_type == "Manual Prediction":
 
-        input_data = pd.DataFrame({
+        st.subheader("📖 Manual Book Prediction")
 
-            'Reviews': [np.log1p(reviews)],
+        if "prediction_done" not in st.session_state:
+            st.session_state.prediction_done = False
 
-            'Ratings': [rating],
+        if "predicted_price" not in st.session_state:
+            st.session_state.predicted_price = None
 
-            'Pages': [pages],
+        col1, col2 = st.columns(2)
 
-            'Genre': [genre_input]
+        with col1:
 
-        })
+            title = st.text_input(
+                "📖 Book Name",
+                placeholder="Enter book name"
+            )
 
-        # Convert categorical genre
+            author = st.text_input(
+                "✍️ Author Name",
+                placeholder="Enter author name"
+            )
+            genre_input = st.selectbox(
+                "📚 Genre",
+                df['Genre_Original'].unique()
+            )
+           
 
-        input_data = pd.get_dummies(
-            input_data,
-            columns=['Genre']
-        )
+        with col2:
 
-        # Match training columns
+            pages = st.slider(
+                "📄 Number of Pages",
+                min_value=100,
+                max_value=1500,
+                value=300,
+                step=50,
+                key="pages_slider"
+            )
+            rating = st.slider(
+                "⭐ Rating",
+                0.0,
+                5.0,
+                4.0
+            )
 
-        input_data = input_data.reindex(
-            columns=X.columns,
-            fill_value=0
-        )
-
-        # Predict
-
-        prediction = model.predict(input_data)[0]
-
-        # Realistic range
-
-        prediction = max(100, min(prediction, 3000))
-
-        st.success("✅ Prediction Generated Successfully")
-
-        st.markdown("## 📊 Prediction Result")
-
-        result_col1, result_col2, result_col3 = st.columns(3)
-
-        result_col1.metric(
-            "💰 Estimated Price",
-            f"₹{prediction:.2f}"
-        )
-
-        result_col2.metric(
-            "📚 Genre",
-            genre_input
-        )
-
-        result_col3.metric(
-            "⭐ Rating",
-            rating
-        )
-
+            reviews = st.slider(
+                "📝 Number of Reviews",
+                min_value=50,
+                max_value=10000,
+                value=500,
+                step=50,
+                key="reviews_slider"
+            )
         st.markdown("---")
 
-        # BOOK SUMMARY
+        predict_btn = st.button("🚀 Predict Price")
 
-        st.subheader("📖 Book Information")
+        # ==============================================
+        # BUTTON CLICK
+        # ==============================================
 
-        summary_col1, summary_col2 = st.columns(2)
+        if predict_btn:
 
-        with summary_col1:
+            if title.strip() == "":
+                st.warning("⚠️ Please enter Book Name")
 
-            st.write(f"**Title:** {title}")
+            elif author.strip() == "":
+                st.warning("⚠️ Please enter Author Name")
 
-            st.write(f"**Author:** {author}")
+                st.session_state.prediction_done = False
 
-            st.write(f"**Genre:** {genre_input}")
+            else:
 
-        with summary_col2:
+               # APPLY SAME TRANSFORMATION
+                transformed_reviews = np.log1p(reviews)
 
-            st.write(f"**Pages:** {pages}")
+                # PAGES SCALE FIX
+                transformed_pages = pages / 100
 
-            st.write(f"**Reviews:** {reviews}")
+                input_data = pd.DataFrame({
 
-            st.write(f"**Rating:** {rating}")
+                    'Reviews': [transformed_reviews],
+                    'Ratings': [rating],
+                    'Pages': [pages],
+                    'Genre': [genre_input]
 
-        st.markdown("---")
+                })
+                input_data = pd.get_dummies(
+                    input_data,
+                    columns=['Genre']
+                )
 
-        # SMART INSIGHTS
+                input_data = input_data.reindex(
+                    columns=training_columns,
+                    fill_value=0
+                )
 
-        st.subheader("🧠 Smart Insights")
+                prediction = model.predict(
+                    input_data
+                )[0]
+                prediction = prediction * (
+    1
+    + (reviews / 10000) * 0.25
+    + (pages / 1500) * 0.15
+)
+                # st.write(input_data)
 
-        insight_found = False
+                price = max(
+                    100,
+                    min(prediction, 3000)
+                )
 
-        # ---------- Rating Insight ----------
+                st.session_state.predicted_price = price
+                st.session_state.prediction_done = True
 
-        if rating >= 4.5:
+                st.session_state.book_title = title
+                st.session_state.book_author = author
+                st.session_state.book_pages = pages
+                st.session_state.book_reviews = reviews
+                st.session_state.book_rating = rating
+                st.session_state.book_genre = genre_input
+
+        # ==============================================
+        # SHOW RESULT
+        # ==============================================
+
+        if st.session_state.prediction_done:
 
             st.success(
-                "🌟 Excellent rating detected. Highly rated books usually attract premium pricing."
+                "✅ Prediction Generated Successfully"
             )
 
-            insight_found = True
+            c1, c2, c3 = st.columns(3)
 
-        elif rating <= 2:
-
-            st.warning(
-                "⚠️ Low-rated books generally have lower customer demand and pricing."
+            c1.metric(
+                "💰 Estimated Price",
+                f"₹{st.session_state.predicted_price:.2f}"
             )
 
-            insight_found = True
-
-        # ---------- Reviews Insight ----------
-
-        if reviews >= 10000:
-
-            st.info(
-                "🔥 This book has very high review engagement, indicating strong popularity."
+            c2.metric(
+                "📚 Genre",
+                st.session_state.book_genre
             )
 
-            insight_found = True
-
-        elif reviews <= 100:
-
-            st.info(
-                "📉 Lower review count may indicate limited market popularity."
+            c3.metric(
+                "⭐ Rating",
+                st.session_state.book_rating
             )
 
-            insight_found = True
+            st.markdown("---")
 
-        # ---------- Pages Insight ----------
+            st.subheader("📖 Book Summary")
 
-        if pages >= 700:
-
-            st.info(
-                "📚 High page count increases production cost and selling price."
+            st.write(
+                f"**Title:** {st.session_state.book_title}"
             )
 
-            insight_found = True
-
-        elif pages <= 150:
-
-            st.info(
-                "📘 Short books are usually more affordable."
+            st.write(
+                f"**Author:** {st.session_state.book_author}"
             )
 
-            insight_found = True
-
-        # ---------- Genre Insight ----------
-
-        if genre_input == "Fantasy":
-
-            st.info(
-                "🧙 Fantasy books often have premium collector-style pricing."
+            st.write(
+                f"**Pages:** {st.session_state.book_pages}"
             )
 
-            insight_found = True
+            st.write(
+                f"**Reviews:** {st.session_state.book_reviews}"
+            )
+            st.markdown("---")
+             # ==================================================
+            # SMART INSIGHT
+            # ==================================================
 
-        elif genre_input == "Thriller":
+            st.subheader("🧠 Smart Insight")
 
-            st.info(
-                "🔍 Thriller books are highly popular among readers."
+            if (
+                st.session_state.book_rating >= 4.5
+                and
+                st.session_state.book_reviews >= 5000
+            ):
+
+                st.success(
+                    "🔥 This book has strong bestseller potential."
+                )
+
+            elif st.session_state.book_pages >= 1000:
+
+                st.info(
+                    "📚 Large books generally maintain premium pricing."
+                )
+
+            elif st.session_state.book_reviews >= 7000:
+
+                st.info(
+                    "⭐ High review count positively impacts pricing."
+                )
+
+            elif st.session_state.book_genre == "Fantasy":
+
+                st.info(
+                    "🧙 Fantasy books usually have premium market demand."
+                )
+
+            else:
+
+                st.info(
+                    "📊 This book falls under average market pricing."
+                )
+           
+     # ==================================================
+    # SMART BULK SCANNER
+    # ==================================================
+
+    elif prediction_type == "Smart Bulk Scanner":
+
+        st.subheader("📚 Smart Bulk Scanner")
+
+        # ==================================================
+        # METHOD 1
+        # ==================================================
+
+        st.markdown("### 📂 Method 1 : Use Project Dataset")
+
+        scan_option = st.selectbox(
+            "Select Dataset",
+            [
+                "Select Data",
+                "Top 10 Books",
+                "Top 50 Books",
+                "Top 100 Books",
+                "Complete Dataset"
+            ]
+        )
+
+        if scan_option == "Select Data":
+
+            selected_df = pd.DataFrame()
+
+        elif scan_option == "Top 10 Books":
+
+            selected_df = df.head(10)
+
+        elif scan_option == "Top 50 Books":
+
+            selected_df = df.head(50)
+
+        elif scan_option == "Top 100 Books":
+
+            selected_df = df.head(100)
+
+        else:
+
+            selected_df = df.copy()
+
+        if not selected_df.empty:
+
+            st.dataframe(
+                selected_df.head(10),
+                use_container_width=True
             )
 
-            insight_found = True
+        st.markdown("---")
 
-        elif genre_input == "Romance":
+        # ==================================================
+        # METHOD 2
+        # ==================================================
 
-            st.info(
-                "💕 Romance books usually remain budget-friendly and widely accessible."
+        st.markdown("### ⬆️ Method 2 : Upload Your Own CSV")
+
+        uploaded_file = st.file_uploader(
+            "Upload CSV File",
+            type=["csv"]
+        )
+
+        custom_df = None
+
+        if uploaded_file is not None:
+
+            custom_df = pd.read_csv(
+                uploaded_file
             )
 
-            insight_found = True
+            st.subheader("📄 Uploaded Dataset")
 
-        elif genre_input == "Horror":
-
-            st.info(
-                "👻 Horror books often attract niche but loyal audiences."
+            st.dataframe(
+                custom_df.head(),
+                use_container_width=True
             )
 
-            insight_found = True
+            st.info("""
+Required Columns:
+- Reviews
+- Ratings
+- Pages
+- Genre
+""")
 
-        # ---------- Final Insight ----------
+        st.markdown("---")
 
-        if not insight_found:
+        predict_bulk = st.button(
+            "🚀 Predict Prices"
+        )
 
-            st.info(
-                "📊 This book falls into a moderate pricing and popularity category."
+        # ==================================================
+        # BULK PREDICTION
+        # ==================================================
+
+        if predict_bulk:
+
+            # ==================================================
+            # DATASET SELECTION
+            # ==================================================
+
+            if not selected_df.empty:
+
+                bulk_df = selected_df.copy()
+
+            elif custom_df is not None:
+
+                bulk_df = custom_df.copy()
+
+            else:
+
+                st.warning(
+                    "⚠️ Please select or upload dataset first"
+                )
+
+                st.stop()
+
+            # ==================================================
+            # REQUIRED COLUMNS
+            # ==================================================
+
+            required_cols = [
+                'Reviews',
+                'Ratings',
+                'Pages',
+                'Genre'
+            ]
+
+            missing_cols = [
+
+                col for col in required_cols
+
+                if col not in bulk_df.columns
+            ]
+
+            if missing_cols:
+
+                st.error(
+                    f"Missing Columns: {missing_cols}"
+                )
+
+                st.stop()
+
+            # ==================================================
+            # PREPROCESS
+            # ==================================================
+
+            bulk_input = bulk_df[
+                [
+                    'Reviews',
+                    'Ratings',
+                    'Pages',
+                    'Genre'
+                ]
+            ].copy()
+
+            bulk_input = bulk_input.replace(
+                [np.inf, -np.inf],
+                np.nan
+            )
+
+            bulk_input = bulk_input.dropna()
+
+            bulk_input['Reviews'] = np.log1p(
+                bulk_input['Reviews']
+            )
+
+            bulk_input['Pages'] = (
+                bulk_input['Pages'] / 100
+            )
+
+            bulk_input = pd.get_dummies(
+                bulk_input,
+                columns=['Genre']
+            )
+
+            bulk_input = bulk_input.reindex(
+                columns=training_columns,
+                fill_value=0
+            )
+
+            # ==================================================
+            # PREDICTION
+            # ==================================================
+
+            predictions = model.predict(
+                bulk_input
+            )
+
+            final_predictions = predictions
+
+            bulk_df = bulk_df.iloc[
+                :len(final_predictions)
+            ]
+
+            bulk_df['Predicted_Price'] = np.clip(
+            final_predictions,
+            100,
+            5000
+        )
+            
+
+            # ==================================================
+            # RESULTS
+            # ==================================================
+
+            st.success(
+                "✅ Prediction Completed Successfully"
+            )
+
+            st.markdown("---")
+
+            c1, c2, c3 = st.columns(3)
+
+            c1.metric(
+                "📚 Total Books",
+                len(bulk_df)
+            )
+
+            c2.metric(
+                "💰 Highest Price",
+                f"₹{round(bulk_df['Predicted_Price'].max(),2)}"
+            )
+
+            c3.metric(
+                "📉 Lowest Price",
+                f"₹{round(bulk_df['Predicted_Price'].min(),2)}"
+            )
+
+            st.markdown("---")
+
+            st.subheader("📊 Prediction Results")
+
+            st.dataframe(
+                bulk_df,
+                use_container_width=True
+            )
+
+            csv = bulk_df.to_csv(
+                index=False
+            )
+
+            st.download_button(
+                label="⬇️ Download Prediction CSV",
+                data=csv,
+                file_name="predicted_books.csv",
+                mime="text/csv"
             )
